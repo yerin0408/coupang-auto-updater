@@ -1,0 +1,44 @@
+# main.yml 파일의 전체 내용입니다.
+
+name: 쿠팡 이미지 자동 업데이트
+
+on:
+  # 이 스크립트를 언제 실행할지 지정하는 부분입니다.
+  schedule:
+    # cron 스케줄 표현식입니다. 아래는 매주 월요일 오전 10시(한국 시간)를 의미합니다.
+    # (UTC 기준으로는 월요일 새벽 1시입니다.)
+    - cron: '0 1 * * 1'
+
+  # Actions 탭에서 수동으로 실행할 수 있는 버튼을 만들어줍니다.
+  workflow_dispatch:
+
+jobs:
+  # 실행할 작업의 목록입니다.
+  run-update-script:
+    # 이 작업은 우분투(리눅스) 환경에서 실행됩니다.
+    runs-on: ubuntu-latest
+
+    steps:
+      # 여기서부터는 실제 실행될 명령어들의 순서입니다.
+
+      # 1. 저장소의 코드를 가상 컴퓨터로 내려받습니다.
+      - name: 저장소 코드 체크아웃
+        uses: actions/checkout@v3
+
+      # 2. 파이썬 언어를 설치하고 설정합니다.
+      - name: 파이썬 환경 설정
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      # 3. 스크립트 실행에 필요한 라이브러리들을 설치합니다.
+      - name: 필요한 라이브러리 설치
+        run: pip install requests beautifulsoup4 lxml
+
+      # 4. 우리가 만든 메인 파이썬 스크립트를 실행합니다.
+      - name: 파이썬 스크립트 실행
+        env:
+          # GitHub Secrets에 저장해 둔 API 키를 스크립트가 사용할 수 있도록 안전하게 전달합니다.
+          COUPANG_ACCESS_KEY: ${{ secrets.COUPANG_ACCESS_KEY }}
+          COUPANG_SECRET_KEY: ${{ secrets.COUPANG_SECRET_KEY }}
+        run: python main.py
