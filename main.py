@@ -24,21 +24,20 @@ def generate_signature(method, path, secret_key, access_key, query=""):
     signature = hmac.new(secret_key.encode('utf-8'), message.encode('utf-8'), hashlib.sha256).hexdigest()
     return f"CEA algorithm=HmacSHA256, access-key={access_key}, signed-date={timestamp}, signature={signature}"
 
-# --- 1. 판매 중인 모든 상품 ID 가져오는 함수 (⭐ 최신 API로 전면 수정) ---
+# --- 1. 판매 중인 모든 상품 ID 가져오는 함수 (⭐ 오류 수정) ---
 def get_all_product_ids():
     print("✅ 1. '상품 목록 페이징 조회' 최신 API로 조회를 시작합니다...")
     product_ids = []
-    page = 0  # 페이지는 0부터 시작
-    size = 100 # 페이지 당 상품 수 (최대 100)
+    # 💡 [핵심 수정사항] 공식 문서에 따라 페이지 번호가 1부터 시작하도록 수정했습니다.
+    page = 1
+    size = 100
 
-    # 우리가 성공했던 'marketplace' 경로를 사용합니다.
     path = "/v2/providers/seller_api/apis/api/v1/marketplace/seller-products"
 
     while True:
         query = f"?page={page}&size={size}"
         try:
             auth = generate_signature("GET", path, SECRET_KEY, ACCESS_KEY, query)
-            # 이 API는 X-VENDOR-ID 헤더가 필수입니다.
             headers = {"Authorization": auth, "X-VENDOR-ID": VENDOR_ID}
 
             response = requests.get(DOMAIN + path + query, headers=headers)
@@ -46,23 +45,25 @@ def get_all_product_ids():
             data = response.json().get('data', {})
             content = data.get('content', [])
 
-            if not content: # 더 이상 상품이 없으면 반복 종료
+            if not content:
                 break
 
             for item in content:
                 product_ids.append(item['sellerProductId'])
 
-            print(f"   - {page+1} 페이지에서 상품 {len(content)}개 발견. (총 {len(product_ids)}개)")
+            print(f"   - {page} 페이지에서 상품 {len(content)}개 발견. (총 {len(product_ids)}개)")
 
-            page += 1 # 다음 페이지로 이동
+            page += 1
             time.sleep(0.5)
 
         except requests.exceptions.HTTPError as e:
             print(f"❌ 상품 목록 조회 실패: {e.response.text}")
-            return [] # 실패 시 빈 목록 반환
+            return []
 
     print(f"✅ 총 {len(product_ids)}개의 상품 ID를 성공적으로 가져왔습니다.")
     return product_ids
+
+# --- (이하 나머지 코드는 이전과 동일합니다) ---
 
 # --- 2. 특정 상품의 전체 JSON 정보를 가져오는 함수 ---
 def get_product_full_json(product_id):
