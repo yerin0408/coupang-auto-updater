@@ -12,7 +12,7 @@ from datetime import timezone
 ACCESS_KEY = os.environ.get('COUPANG_ACCESS_KEY')
 SECRET_KEY = os.environ.get('COUPANG_SECRET_KEY')
 VENDOR_ID = "A00835730"  # 본인 쿠팡 판매자 ID (WING 로그인 ID)
-IMAGE_FIXED_URL = "https://gi.esmplus.com/na100shop/mall/DAY.jpg" # 매주 교체할 이미지의 고정 URL
+IMAGE_FIXED_URL = "https://gi.esmplus.com/na100shop/mall/mall_top.jpg"
 
 DOMAIN = "https://api-gateway.coupang.com"
 
@@ -24,52 +24,36 @@ def generate_signature(method, path, secret_key, access_key, query=""):
     signature = hmac.new(secret_key.encode('utf-8'), message.encode('utf-8'), hashlib.sha256).hexdigest()
     return f"CEA algorithm=HmacSHA256, access-key={access_key}, signed-date={timestamp}, signature={signature}"
 
-# --- 1. 판매 중인 모든 상품 ID 가져오는 함수 (공식 문서 기반으로 완벽 수정) ---
+# --- 1. 판매 중인 모든 상품 ID 가져오는 함수 ---
 def get_all_product_ids():
     print("1. '상품 목록 페이징 조회' API로 조회를 시작합니다...")
     product_ids = []
-    next_token = "1"  # 공식 문서에 따라 첫 페이지는 "1"로 시작
-
+    page = 1
+    size = 100
     path = "/v2/providers/seller_api/apis/api/v1/marketplace/seller-products"
-
-    while next_token:
-        # 공식 문서에 명시된 파라미터 이름을 정확히 사용합니다.
-        query_for_signature = f"vendorId={VENDOR_ID}&maxPerPage=100&nextToken={next_token}"
+    while True:
+        query_for_signature = f"vendorId={VENDOR_ID}&maxPerPage=100&nextToken={page}" if page > 1 else f"vendorId={VENDOR_ID}&maxPerPage=100"
         query_for_request = f"?{query_for_signature}"
-
         try:
             auth = generate_signature("GET", path, SECRET_KEY, ACCESS_KEY, query_for_signature)
-            # 이 API는 X-VENDOR-ID 헤더를 사용하지 않습니다.
-            headers = {"Authorization": auth}
-
+            headers = {"Authorization": auth, "X-VENDOR-ID": VENDOR_ID}
             response = requests.get(DOMAIN + path + query_for_request, headers=headers)
             response.raise_for_status()
             data = response.json()
-
             products_on_page = data.get('data', [])
-            if not products_on_page:
-                break
-
+            if not products_on_page: break
             for item in products_on_page:
                 product_ids.append(item['sellerProductId'])
-
-            print(f"   - 상품 {len(products_on_page)}개 발견. (총 {len(product_ids)}개)")
-
-            # 다음 페이지를 위해 응답에 포함된 nextToken 값을 사용합니다.
+            print(f"   - {page} 페이지에서 상품 {len(products_on_page)}개 발견. (총 {len(product_ids)}개)")
             next_token = data.get('nextToken')
-            if not next_token: # nextToken이 비어있으면 마지막 페이지이므로 종료
-                break
-
+            if not next_token: break
+            page = next_token
             time.sleep(0.5)
-
         except requests.exceptions.HTTPError as e:
             print(f"상품 목록 조회 실패: {e.response.text}")
             return []
-
     print(f"총 {len(product_ids)}개의 상품 ID를 성공적으로 가져왔습니다.")
     return product_ids
-
-# --- (이하 나머지 코드는 이전과 동일합니다) ---
 
 # --- 2. 특정 상품의 전체 JSON 정보를 가져오는 함수 ---
 def get_product_full_json(product_id):
@@ -80,10 +64,10 @@ def get_product_full_json(product_id):
         response.raise_for_status()
         return response.json().get('data', {})
     except requests.exceptions.HTTPError as e:
-        print(f"상품 ID {product_id} 정보 조회 실패: {e.response.text}")
+        print(f"   상품 ID {product_id} 정보 조회 실패: {e.response.text}")
         return None
 
-# --- 3. 상품 수정 요청 함수 ---
+# --- 3. 상품 수정 요청 함수 (로직 수정) ---
 def request_product_update(product_id, image_url):
     print(f"\n--- 상품 ID {product_id} 업데이트 작업 시작 ---")
     product_json = get_product_full_json(product_id)
@@ -95,12 +79,21 @@ def request_product_update(product_id, image_url):
                 if content_block.get('contentsType') == 'HTML':
                     for detail in content_block.get('contentDetails', []):
                         soup = BeautifulSoup(detail.get('content', ''), 'lxml')
-                        if soup.find('img'):
-                            soup.find('img')['src'] = image_url
+
+                        # [핵심 수정사항] find -> find_all로 변경하고, 두 번째 이미지를 선택합니다.
+                        all_images = soup.find_all('img') # 모든 <img> 태그를 리스트로 가져옴
+
+                        if len(all_images) >= 2: # 이미지가 2개 이상 있는지 확인
+                            second_image = all_images[1] # 리스트의 두 번째 항목 선택 (인덱스는 0부터 시작)
+                            second_image['src'] = image_url # 두 번째 이미지의 주소 변경
                             detail['content'] = str(soup)
                             is_modified = True
+                        else:
+                            # 이미지가 2개 미만일 경우, 수정하지 않고 메시지를 출력합니다.
+                            print(f"   - 상품 ID {product_id}에 이미지가 2개 미만이라 수정하지 않습니다.")
+
         if not is_modified:
-            print("   - 수정할 이미지를 찾지 못해 건너뜁니다.")
+            print("   - 수정할 내용이 없어 건너뜁니다.")
             return
 
         keys_to_remove = ["statusName", "productId", "mdId", "mdName", "contributorType", "status", "roleCode", "trackingId"]
@@ -119,9 +112,9 @@ def request_product_update(product_id, image_url):
 
         response_put = requests.put(DOMAIN + path_put, headers=headers, data=json.dumps(product_json))
         response_put.raise_for_status()
-        print(f"수정 및 승인 요청 성공!")
+        print(f"   수정 및 승인 요청 성공!")
     except Exception as e:
-        print(f"처리 중 오류 발생: {e}")
+        print(f"   처리 중 오류 발생: {e}")
 
 # --- 메인 실행 함수 ---
 def main():
@@ -133,13 +126,13 @@ def main():
 
     cache_buster = f"?v={int(time.time())}"
     final_image_url = IMAGE_FIXED_URL + cache_buster
-    print(f"\"적용할 이미지 URL: {final_image_url}\n")
+    print(f"\n적용할 이미지 URL: {final_image_url}\n")
 
     for pid in product_ids:
         request_product_update(pid, final_image_url)
         time.sleep(1)
 
-    print("\n🎉 모든 상품에 대한 작업이 완료되었습니다. 쿠팡 WING에서 최종 승인 상태를 확인해주세요.")
+    print("\n모든 상품에 대한 작업이 완료되었습니다. 쿠팡 WING에서 최종 승인 상태를 확인해주세요.")
 
 if __name__ == "__main__":
     main()
