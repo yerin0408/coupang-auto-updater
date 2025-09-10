@@ -24,34 +24,56 @@ def generate_signature(method, path, secret_key, access_key, query=""):
     signature = hmac.new(secret_key.encode('utf-8'), message.encode('utf-8'), hashlib.sha256).hexdigest()
     return f"CEA algorithm=HmacSHA256, access-key={access_key}, signed-date={timestamp}, signature={signature}"
 
-# --- 1. 판매 중인 모든 상품 ID 가져오는 함수 ---
+# --- 1. 판매 중인 모든 상품 ID 가져오는 함수 (오류 수정) ---
 def get_all_product_ids():
     print("1. '상품 목록 페이징 조회' API로 조회를 시작합니다...")
     product_ids = []
-    page = 1
-    size = 100
+    # next_token을 문자열로 다루고, 첫 페이지는 "1"로 시작합니다.
+    next_token = "1"
+    page_count = 1
+
     path = "/v2/providers/seller_api/apis/api/v1/marketplace/seller-products"
-    while True:
-        query_for_signature = f"vendorId={VENDOR_ID}&maxPerPage=100&nextToken={page}" if page > 1 else f"vendorId={VENDOR_ID}&maxPerPage=100"
+
+    while next_token:
+        # 💡 [핵심 수정사항] 쿼리 생성 로직을 더 안전하게 변경했습니다.
+        query_params = {
+            "vendorId": VENDOR_ID,
+            "maxPerPage": 100,
+            "nextToken": next_token
+        }
+        # 쿼리스트링 생성 (예: vendorId=A...&maxPerPage=100&nextToken=1)
+        query_for_signature = "&".join([f"{k}={v}" for k, v in query_params.items()])
         query_for_request = f"?{query_for_signature}"
+
         try:
             auth = generate_signature("GET", path, SECRET_KEY, ACCESS_KEY, query_for_signature)
-            headers = {"Authorization": auth, "X-VENDOR-ID": VENDOR_ID}
+            headers = {"Authorization": auth}
+
             response = requests.get(DOMAIN + path + query_for_request, headers=headers)
             response.raise_for_status()
             data = response.json()
+
             products_on_page = data.get('data', [])
-            if not products_on_page: break
+            if not products_on_page:
+                break
+
             for item in products_on_page:
                 product_ids.append(item['sellerProductId'])
-            print(f"   - {page} 페이지에서 상품 {len(products_on_page)}개 발견. (총 {len(product_ids)}개)")
+
+            print(f"   - {page_count} 페이지에서 상품 {len(products_on_page)}개 발견. (총 {len(product_ids)}개)")
+
+            # 다음 페이지를 위해 응답에 포함된 nextToken 값을 사용합니다.
             next_token = data.get('nextToken')
-            if not next_token: break
-            page = next_token
+            if not next_token: # nextToken이 비어있거나 null이면 마지막 페이지이므로 종료
+                break
+
+            page_count += 1
             time.sleep(0.5)
+
         except requests.exceptions.HTTPError as e:
             print(f"상품 목록 조회 실패: {e.response.text}")
             return []
+
     print(f"총 {len(product_ids)}개의 상품 ID를 성공적으로 가져왔습니다.")
     return product_ids
 
@@ -67,7 +89,7 @@ def get_product_full_json(product_id):
         print(f"   상품 ID {product_id} 정보 조회 실패: {e.response.text}")
         return None
 
-# --- 3. 상품 수정 요청 함수 (로직 수정) ---
+# --- 3. 상품 수정 요청 함수 ---
 def request_product_update(product_id, image_url):
     print(f"\n--- 상품 ID {product_id} 업데이트 작업 시작 ---")
     product_json = get_product_full_json(product_id)
@@ -79,19 +101,14 @@ def request_product_update(product_id, image_url):
                 if content_block.get('contentsType') == 'HTML':
                     for detail in content_block.get('contentDetails', []):
                         soup = BeautifulSoup(detail.get('content', ''), 'lxml')
-
-                        # [핵심 수정사항] find -> find_all로 변경하고, 두 번째 이미지를 선택합니다.
-                        all_images = soup.find_all('img') # 모든 <img> 태그를 리스트로 가져옴
-
-                        if len(all_images) >= 2: # 이미지가 2개 이상 있는지 확인
-                            second_image = all_images[1] # 리스트의 두 번째 항목 선택 (인덱스는 0부터 시작)
-                            second_image['src'] = image_url # 두 번째 이미지의 주소 변경
+                        all_images = soup.find_all('img')
+                        if len(all_images) >= 2:
+                            second_image = all_images[1]
+                            second_image['src'] = image_url
                             detail['content'] = str(soup)
                             is_modified = True
                         else:
-                            # 이미지가 2개 미만일 경우, 수정하지 않고 메시지를 출력합니다.
                             print(f"   - 상품 ID {product_id}에 이미지가 2개 미만이라 수정하지 않습니다.")
-
         if not is_modified:
             print("   - 수정할 내용이 없어 건너뜁니다.")
             return
