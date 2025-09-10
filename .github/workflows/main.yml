@@ -38,7 +38,7 @@ jobs:
       # 4. 우리가 만든 메인 파이썬 스크립트를 실행합니다.
       - name: 파이썬 스크립트 실행
         env:
-          # GitHub Secrets에 저장해 둔 API 키를 스크립트가 사용할 수 있도록 안전하게 전달합니다.
           COUPANG_ACCESS_KEY: ${{ secrets.COUPANG_ACCESS_KEY }}
           COUPANG_SECRET_KEY: ${{ secrets.COUPANG_SECRET_KEY }}
+          PYTHONIOENCODING: utf-8
         run: python main.py
