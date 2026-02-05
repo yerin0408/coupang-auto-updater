@@ -12,7 +12,7 @@ from datetime import timezone
 ACCESS_KEY = os.environ.get('COUPANG_ACCESS_KEY')
 SECRET_KEY = os.environ.get('COUPANG_SECRET_KEY')
 VENDOR_ID = "A00835730"  # 본인 쿠팡 판매자 ID (WING 로그인 ID)
-IMAGE_FIXED_URL = "https://gi.esmplus.com/na100shop/mall/DAY_260205.jpg" # 매주 교체할 이미지의 고정 URL
+IMAGE_FIXED_URL = "https://gi.esmplus.com/na100shop/mall/DAY_260205_2.jpg" # 매주 교체할 이미지의 고정 URL
 
 DOMAIN = "https://api-gateway.coupang.com"
 
