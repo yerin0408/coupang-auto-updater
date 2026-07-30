@@ -18,11 +18,11 @@ jobs:
 
       # 1. 저장소의 코드를 가상 컴퓨터로 내려받습니다.
       - name: 저장소 코드 체크아웃
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # 2. 파이썬 언어를 설치하고 설정합니다.
       - name: 파이썬 환경 설정
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
