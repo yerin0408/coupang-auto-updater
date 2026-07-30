@@ -28,19 +28,28 @@ def generate_signature(method, path, secret_key, access_key, query=""):
 def get_all_product_ids():
     print("1. '상품 목록 페이징 조회' API로 조회를 시작합니다...")
     product_ids = []
-    next_token = "1"  # 공식 문서에 따라 첫 페이지는 "1"로 시작
+    next_token = ""  # 첫 페이지는 nextToken 없이 시작
 
     path = "/v2/providers/seller_api/apis/api/v1/marketplace/seller-products"
 
-    while next_token:
-        # 공식 문서에 명시된 파라미터 이름을 정확히 사용합니다.
-        query_for_signature = f"vendorId={VENDOR_ID}&maxPerPage=100&nextToken={next_token}"
+    while True:
+        # 첫 페이지 조회 시에는 nextToken 파라미터를 제외합니다.
+        if not next_token:
+            query_for_signature = f"vendorId={VENDOR_ID}&maxPerPage=100"
+        else:
+            query_for_signature = f"vendorId={VENDOR_ID}&maxPerPage=100&nextToken={next_token}"
+
         query_for_request = f"?{query_for_signature}"
 
         try:
             auth = generate_signature("GET", path, SECRET_KEY, ACCESS_KEY, query_for_signature)
-            # 이 API는 X-VENDOR-ID 헤더를 사용하지 않습니다.
-            headers = {"Authorization": auth}
+            
+            # GET 요청에도 필수 표준 헤더를 함께 포함해 줍니다.
+            headers = {
+                "Authorization": auth,
+                "Content-Type": "application/json;charset=UTF-8",
+                "X-VENDOR-ID": VENDOR_ID
+            }
 
             response = requests.get(DOMAIN + path + query_for_request, headers=headers)
             response.raise_for_status()
@@ -55,9 +64,9 @@ def get_all_product_ids():
 
             print(f"   - 상품 {len(products_on_page)}개 발견. (총 {len(product_ids)}개)")
 
-            # 다음 페이지를 위해 응답에 포함된 nextToken 값을 사용합니다.
+            # 다음 페이지를 위해 응답에 포함된 nextToken 값을 확인합니다.
             next_token = data.get('nextToken')
-            if not next_token: # nextToken이 비어있으면 마지막 페이지이므로 종료
+            if not next_token:  # nextToken이 없으면 마지막 페이지이므로 종료
                 break
 
             time.sleep(0.5)
